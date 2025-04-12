@@ -8,7 +8,9 @@ import torch
 from transformers import ViltProcessor, ViltForQuestionAnswering
 import json
 from flask_cors import CORS
+from dotenv import load_dotenv
 
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
@@ -67,7 +69,7 @@ with open("disease_dict.json") as f:
     disease_dict = json.load(f)
 
 # 4. Prediction route
-@app.route("/predict", methods=["POST"])
+@app.route("/api/predict", methods=["POST"])
 def predict():
     file = request.files.get("image")
     question = request.form.get("question", "What disease does the patient have?")
@@ -85,12 +87,13 @@ def predict():
         "python3", "crop_align.py",
         "--data", input_path,
         "--save_dir", output_path,
-        "--model_path", CROPPER_PATH,
-        "--no_cuda"
+        "--cropper_model", CROPPER_PATH,
     ], check=True)
 
     if not os.path.exists(output_path):
         return jsonify({"error": "Face alignment failed"}), 500
+
+    print(f"[INFO] Alignment successful: {output_path}")
 
     # Run inference
     image = Image.open(output_path)
@@ -103,11 +106,14 @@ def predict():
         predicted = torch.topk(logits, k=3).indices[0].tolist()
 
     predicted_diseases = [disease_dict[str(i)] for i in predicted]
+    confidence = [round(100 * torch.softmax(logits, dim=1)[0][i].item(), 2) for i in predicted]
+
+    print(f"[INFO] Inference successful: {predicted_diseases}, confidence: {confidence}")
 
     return jsonify({
         "prediction": predicted_diseases,
-        "confidence": [round(100 * torch.softmax(logits, dim=1)[0][i].item(), 2) for i in predicted]
+        "confidence": confidence
     })
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5001, debug=True)

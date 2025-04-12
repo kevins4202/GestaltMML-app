@@ -8,3 +8,5 @@ scikit-image
 requests
 huggingface-hub
 flask-cors
+torchvision
+scikit-image
