@@ -1,136 +1,110 @@
 import os
-import torch
-import torchvision.transforms as transforms
+import uuid
+import subprocess
+import requests
+from flask import Flask, request, jsonify
 from PIL import Image
-from flask import Flask, request, jsonify, Response
-from flask_cors import CORS
-import io
-from huggingface_hub import hf_hub_download
-import logging
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+import torch
+from transformers import ViltProcessor, ViltForQuestionAnswering
+import json
 
 app = Flask(__name__)
-CORS(app)
+UPLOAD_FOLDER = "static/uploads"
+ALIGNED_FOLDER = "static/aligned"
+MODEL_FOLDER = "models"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(ALIGNED_FOLDER, exist_ok=True)
+os.makedirs(MODEL_FOLDER, exist_ok=True)
 
-# Global variables
-MODEL = None
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+HF_TOKEN = os.environ.get("GESTALT_HF_TOKEN", None)
+HF_HEADERS = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else {}
 
-# Configuration
-HF_MODEL_REPO = "your-username/your-model-name"  # Replace with your Hugging Face repo
-HF_MODEL_FILENAME = "model.pt"  # The filename of your model in the repo
-HF_TOKEN = os.environ.get("HUGGINGFACE_TOKEN", None)  # Set this in your environment variables for private repos
+HF_REPO = "kevins4202/GestaltMML"
+MODEL_FILENAME = "GestaltMML_model.pt"
+CROPPER_FILENAME = "Resnet50_Final.pth"
 
-# Assuming your model outputs class indices, map them to disease names
-DISEASE_CLASSES = {
-    0: "Healthy",
-    1: "Disease A",
-    2: "Disease B",
-    # Add more classes as per your model
-}
+MODEL_PATH = os.path.join(MODEL_FOLDER, MODEL_FILENAME)
+CROPPER_PATH = os.path.join(MODEL_FOLDER, CROPPER_FILENAME)
 
-def load_model_from_huggingface():
-    """Download and load model from Hugging Face Hub"""
-    global MODEL
-    
-    try:
-        logger.info(f"Downloading model from Hugging Face: {HF_MODEL_REPO}")
-        model_path = hf_hub_download(
-            repo_id=HF_MODEL_REPO,
-            filename=HF_MODEL_FILENAME,
-            token=HF_TOKEN
-        )
-        
-        logger.info("Loading model into memory")
-        MODEL = torch.load(model_path, map_location=DEVICE)
-        MODEL.eval()  # Set to evaluation mode
-        logger.info(f"Model loaded successfully on {DEVICE}")
-        return True
-    except Exception as e:
-        logger.error(f"Error loading model: {str(e)}")
-        return False
+# 1. Download model weights from Hugging Face if not already present
+def download_from_huggingface(filename, save_path):
+    if os.path.exists(save_path):
+        print(f"[INFO] {filename} already exists. Skipping download.")
+        return
+    url = f"https://huggingface.co/{HF_REPO}/resolve/main/{filename}"
+    print(f"[INFO] Downloading {filename} from {url}")
+    response = requests.get(url, headers=HF_HEADERS)
+    if response.status_code == 200:
+        with open(save_path, "wb") as f:
+            f.write(response.content)
+        print(f"[INFO] Saved {filename} to {save_path}")
+    else:
+        raise Exception(f"Failed to download {filename}: {response.status_code}, {response.text}")
 
-def preprocess_image(image):
-    """Preprocess the image for model input"""
-    # Adjust these transformations based on your model's requirements
-    preprocess = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-    
-    image = preprocess(image).unsqueeze(0)  # Add batch dimension
-    return image.to(DEVICE)
+download_from_huggingface(MODEL_FILENAME, MODEL_PATH)
+download_from_huggingface(CROPPER_FILENAME, CROPPER_PATH)
 
-@app.before_request
-def initialize():
-    global MODEL
-    if MODEL is None:
-        success = load_model_from_huggingface()
-        if not success:
-            # If model loading fails, we'll handle requests individually
+# 2. Load processor and model
+device = "cuda" if torch.cuda.is_available() else "cpu"
+processor = ViltProcessor.from_pretrained("dandelin/vilt-b32-mlm")
 
-@app.route('/health', methods=['GET'])
-def health_check():
-    """Endpoint to check if the service is running and model is loaded"""
-    if MODEL is None:
-        return jsonify({'status': 'Service running, but model not loaded'}), 503
-    return jsonify({'status': 'healthy'}), 200
+label_ids = list(range(528))
+id2label = {i: str(i) for i in label_ids}
+label2id = {str(i): i for i in label_ids}
 
-@app.route('/api/predict', methods=['POST'])
+model = ViltForQuestionAnswering.from_pretrained(
+    "dandelin/vilt-b32-mlm", id2label=id2label, label2id=label2id
+)
+model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+model.to(device)
+model.eval()
+
+# 3. Load disease dictionary
+with open("disease_dict.json") as f:
+    disease_dict = json.load(f)
+
+# 4. Prediction route
+@app.route("/predict", methods=["POST"])
 def predict():
-    global MODEL
-    
-    # Check if model is loaded
-    if MODEL is None:
-        success = load_model_from_huggingface()
-        if not success:
-            return jsonify({'error': 'Failed to load model'}), 500
-    
-    # Check if image is provided
-    if 'image' not in request.files:
-        return jsonify({'error': 'No image provided'}), 400
-    
-    try:
-        file = request.files['image']
-        img = Image.open(io.BytesIO(file.read())).convert('RGB')
-        
-        # Preprocess image
-        img_tensor = preprocess_image(img)
-        
-        # Get prediction
-        with torch.no_grad():
-            output = MODEL(img_tensor)
-            
-        # Process the prediction (adjust based on your model output)
-        _, predicted_idx = torch.max(output, 1)
-        predicted_disease = DISEASE_CLASSES.get(predicted_idx.item(), "Unknown")
-        
-        # Get confidence scores
-        probabilities = torch.nn.functional.softmax(output[0], dim=0)
-        confidence = probabilities[predicted_idx].item() * 100
-        
-        # Return all class probabilities for more detailed analysis
-        all_probs = {DISEASE_CLASSES.get(i, f"Class {i}"): float(prob) * 100 
-                    for i, prob in enumerate(probabilities.cpu().numpy())}
-        
-        return jsonify({
-            'prediction': predicted_disease,
-            'confidence': f"{confidence:.2f}%",
-            'probabilities': all_probs
-        })
-        
-    except Exception as e:
-        logger.error(f"Prediction error: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+    file = request.files.get("image")
+    question = request.form.get("question", "What disease does the patient have?")
 
-if __name__ == '__main__':
-    # Try to load the model on startup
-    load_model_from_huggingface()
-    
-    # Start the Flask server
-    port = int(os.environ.get('PORT', 5000))
-    app.run(debug=False, host='0.0.0.0', port=port)
+    if not file:
+        return jsonify({"error": "No image uploaded"}), 400
+
+    img_id = str(uuid.uuid4())
+    input_path = os.path.join(UPLOAD_FOLDER, f"{img_id}.jpg")
+    file.save(input_path)
+
+    # Run crop_align.py with Resnet50_Final.pth
+    output_path = os.path.join(ALIGNED_FOLDER, f"{img_id}_aligned.jpg")
+    subprocess.run([
+        "python3", "crop_align.py",
+        "--data", input_path,
+        "--save_dir", output_path,
+        "--model_path", CROPPER_PATH,
+        "--no_cuda"
+    ], check=True)
+
+    if not os.path.exists(output_path):
+        return jsonify({"error": "Face alignment failed"}), 500
+
+    # Run inference
+    image = Image.open(output_path)
+    inputs = processor(image, question, return_tensors="pt", padding="max_length", truncation=True)
+    inputs = {k: v.to(device) for k, v in inputs.items()}
+
+    with torch.no_grad():
+        outputs = model(**inputs)
+        logits = outputs.logits
+        predicted = torch.topk(logits, k=3).indices[0].tolist()
+
+    predicted_diseases = [disease_dict[str(i)] for i in predicted]
+
+    return jsonify({
+        "predicted_diseases": predicted_diseases,
+        "aligned_image_url": f"/static/aligned/{img_id}_aligned.jpg"
+    })
+
+if __name__ == "__main__":
+    app.run(debug=True)
