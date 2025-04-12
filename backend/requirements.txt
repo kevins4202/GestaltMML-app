@@ -7,3 +7,4 @@ tqdm
 scikit-image
 requests
 huggingface-hub
+flask-cors

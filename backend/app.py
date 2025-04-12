@@ -7,8 +7,11 @@ from PIL import Image
 import torch
 from transformers import ViltProcessor, ViltForQuestionAnswering
 import json
+from flask_cors import CORS
+
 
 app = Flask(__name__)
+CORS(app)
 UPLOAD_FOLDER = "static/uploads"
 ALIGNED_FOLDER = "static/aligned"
 MODEL_FOLDER = "models"
@@ -102,9 +105,9 @@ def predict():
     predicted_diseases = [disease_dict[str(i)] for i in predicted]
 
     return jsonify({
-        "predicted_diseases": predicted_diseases,
-        "aligned_image_url": f"/static/aligned/{img_id}_aligned.jpg"
+        "prediction": predicted_diseases,
+        "confidence": [round(100 * torch.softmax(logits, dim=1)[0][i].item(), 2) for i in predicted]
     })
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
