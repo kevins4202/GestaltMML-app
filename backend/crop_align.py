@@ -141,8 +141,8 @@ def detect(net, img_path, img_name, device, save_dir='', first=False):
         new_img = cv2.resize(img, new_size)
 
         return new_img
-
-    if img_path == (None, []):
+    
+    if img_path is None or (isinstance(img_path, np.ndarray) and len(img_path) == 0):
         print(f"Error averted at {img_name}, skipping.")
         return None, []
 

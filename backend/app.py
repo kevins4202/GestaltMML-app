@@ -90,13 +90,13 @@ def predict():
         "--cropper_model", CROPPER_PATH,
     ], check=True)
 
-    if not os.path.exists(output_path):
+    if not os.path.exists(output_path) or not os.path.isfile(output_path + "/" + os.path.basename(output_path)):
         return jsonify({"error": "Face alignment failed"}), 500
 
     print(f"[INFO] Alignment successful: {output_path}")
 
     # Run inference
-    image = Image.open(output_path)
+    image = Image.open(output_path + "/" + os.path.basename(output_path))
     inputs = processor(image, question, return_tensors="pt", padding="max_length", truncation=True)
     inputs = {k: v.to(device) for k, v in inputs.items()}
 
@@ -105,14 +105,21 @@ def predict():
         logits = outputs.logits
         predicted = torch.topk(logits, k=3).indices[0].tolist()
 
-    predicted_diseases = [disease_dict[str(i)] for i in predicted]
-    confidence = [round(100 * torch.softmax(logits, dim=1)[0][i].item(), 2) for i in predicted]
+        probs = torch.nn.functional.softmax(logits, dim=-1)  # Convert logits to probabilities
 
-    print(f"[INFO] Inference successful: {predicted_diseases}, confidence: {confidence}")
+        topk = torch.topk(probs, k=3)
+        topk_probs = topk.values[0].tolist()
+        topk_indices = topk.indices[0].tolist()
+
+    predicted_diseases = [disease_dict[str(i)] for i in topk_indices]
+
+    # Combine diseases with their confidences
+    predictions_with_confidence = list(zip(predicted_diseases, topk_probs))
+
+    print(f"[INFO] Inference successful: {predictions_with_confidence}")
 
     return jsonify({
-        "prediction": predicted_diseases,
-        "confidence": confidence
+        "predictions": predictions_with_confidence
     })
 
 if __name__ == "__main__":

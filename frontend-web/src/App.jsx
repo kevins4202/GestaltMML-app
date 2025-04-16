@@ -1,5 +1,5 @@
 // App.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
 
 /**
@@ -14,7 +14,7 @@ import './App.css';
 const App = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [preview, setPreview] = useState(null);
-  const [prediction, setPrediction] = useState(null);
+  const [predictions, setPredictions] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -31,7 +31,7 @@ const App = () => {
       reader.readAsDataURL(file);
       
       // Reset results
-      setPrediction(null);
+      setPredictions(null);
       setError(null);
     }
   };
@@ -60,13 +60,17 @@ const App = () => {
       }
 
       const data = await response.json();
-      setPrediction(data);
+      setPredictions(data['predictions']);
     } catch (err) {
       setError('Error: ' + err.message);
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    console.log('Predictions:', predictions);
+  }, [predictions]);
 
   return (
     <div className="App">
@@ -104,12 +108,16 @@ const App = () => {
           {error && <div className="error">{error}</div>}
         </div>
         
-        {prediction && (
+        {predictions && (
           <div className="results">
             <h2>Diagnosis Results</h2>
             <div className="result-content">
-              <p><strong>Prediction:</strong> {prediction.prediction}</p>
-              <p><strong>Confidence:</strong> {prediction.confidence}</p>
+              {predictions.map((prediction, index) => (
+                <div key={index}>
+                  <p><strong>Disease:</strong> {prediction[0]}</p>
+                  <p><strong>Confidence:</strong> {prediction[1]}</p>
+                </div>
+              ))}
             </div>
           </div>
         )}
