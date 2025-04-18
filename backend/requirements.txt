@@ -10,3 +10,4 @@ huggingface-hub
 flask-cors
 torchvision
 scikit-image
+python-dotenv
