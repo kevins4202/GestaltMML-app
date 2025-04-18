@@ -9,6 +9,7 @@ from transformers import ViltProcessor, ViltForQuestionAnswering
 import json
 from flask_cors import CORS
 from dotenv import load_dotenv
+from huggingface_hub import hf_hub_download
 
 load_dotenv()
 
@@ -46,8 +47,10 @@ def download_from_huggingface(filename, save_path):
     else:
         raise Exception(f"Failed to download {filename}: {response.status_code}, {response.text}")
 
-download_from_huggingface(MODEL_FILENAME, MODEL_PATH)
-download_from_huggingface(CROPPER_FILENAME, CROPPER_PATH)
+# download_from_huggingface(MODEL_FILENAME, MODEL_PATH)
+# download_from_huggingface(CROPPER_FILENAME, CROPPER_PATH)
+gestalt_model_path = hf_hub_download(repo_id="kevins4202/GestaltMML", filename="GestaltMML_model.pt", token=HF_TOKEN)
+resnet_path = hf_hub_download(repo_id="kevins4202/GestaltMML", filename="Resnet50_Final.pth", token=HF_TOKEN)
 
 # 2. Load processor and model
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -60,7 +63,8 @@ label2id = {str(i): i for i in label_ids}
 model = ViltForQuestionAnswering.from_pretrained(
     "dandelin/vilt-b32-mlm", id2label=id2label, label2id=label2id
 )
-model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+# model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+model.load_state_dict(torch.load(gestalt_model_path, map_location=device))
 model.to(device)
 model.eval()
 
@@ -87,7 +91,7 @@ def predict():
         "python3", "crop_align.py",
         "--data", input_path,
         "--save_dir", output_path,
-        "--cropper_model", CROPPER_PATH,
+        "--cropper_model", resnet_path,
     ], check=True)
 
     if not os.path.exists(output_path) or not os.path.isfile(output_path + "/" + os.path.basename(output_path)):

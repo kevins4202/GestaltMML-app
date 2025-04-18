@@ -1,6 +1,6 @@
 // App.js
-import React, { useState, useEffect } from 'react';
-import './App.css';
+import React, { useState, useEffect } from "react";
+import "./App.css";
 
 /**
  * App component for medical image diagnosis.
@@ -22,14 +22,14 @@ const App = () => {
     const file = event.target.files[0];
     if (file) {
       setSelectedFile(file);
-      
+
       // Create preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setPreview(reader.result);
       };
       reader.readAsDataURL(file);
-      
+
       // Reset results
       setPredictions(null);
       setError(null);
@@ -39,37 +39,37 @@ const App = () => {
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!selectedFile) {
-      setError('Please select an image first');
+      setError("Please select an image first");
       return;
     }
 
     setLoading(true);
     setError(null);
-    
+
     const formData = new FormData();
-    formData.append('image', selectedFile);
+    formData.append("image", selectedFile);
 
     try {
-      const response = await fetch('http://localhost:5001/api/predict', {
-        method: 'POST',
+      const response = await fetch("https://backend-2c1js6jmd-kevins4202s-projects.vercel.app/api/predict", {
+        method: "POST",
         body: formData,
       });
 
       if (!response.ok) {
-        throw new Error('Prediction failed');
+        throw new Error("Prediction failed");
       }
 
       const data = await response.json();
-      setPredictions(data['predictions']);
+      setPredictions(data["predictions"]);
     } catch (err) {
-      setError('Error: ' + err.message);
+      setError("Error: " + err.message);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    console.log('Predictions:', predictions);
+    console.log("Predictions:", predictions);
   }, [predictions]);
 
   return (
@@ -77,53 +77,63 @@ const App = () => {
       <header>
         <h1>Medical Image Diagnosis</h1>
       </header>
-      
+
       <main>
-        <div className="upload-container">
-          <h2>Upload Image</h2>
-          <form onSubmit={handleSubmit}>
-            <div className="file-input">
-              <input 
-                type="file" 
-                onChange={handleFileChange} 
-                accept="image/*"
-              />
-            </div>
-            
-            {preview && (
-              <div className="preview">
-                <h3>Preview</h3>
-                <img src={preview} alt="Preview" />
-              </div>
-            )}
-            
-            <button 
-              type="submit" 
-              disabled={!selectedFile || loading}
+        <section className="upload-section" aria-label="Upload medical image">
+          <div className="upload-container">
+            <form
+              onSubmit={handleSubmit}
+              className="upload-form"
+              autoComplete="off"
             >
-              {loading ? 'Processing...' : 'Get Diagnosis'}
-            </button>
-          </form>
-          
-          {error && <div className="error">{error}</div>}
-        </div>
-        
-        {predictions && (
-          <div className="results">
-            <h2>Diagnosis Results</h2>
-            <div className="result-content">
-              {predictions.map((prediction, index) => (
-                <div key={index}>
-                  <p><strong>Disease:</strong> {prediction[0]}</p>
-                  <p><strong>Confidence:</strong> {prediction[1]}</p>
+              <label htmlFor="file-upload" className="file-label">
+                Select an image to diagnose:
+              </label>
+              <input
+                id="file-upload"
+                className="file-input"
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                aria-label="Upload image file"
+              />
+              {preview && (
+                <div className="preview" aria-label="Image preview">
+                  <img src={preview} alt="Preview" />
                 </div>
-              ))}
-            </div>
+              )}
+              <button type="submit" disabled={loading} className="submit-btn">
+                {loading ? "Analyzing..." : "Diagnose"}
+              </button>
+              {error && (
+                <div className="error" role="alert">
+                  {error}
+                </div>
+              )}
+            </form>
           </div>
+        </section>
+
+        {predictions && (
+          <section className="results-section" aria-label="Diagnosis results">
+            <div className="results">
+              <h2>Diagnosis Results</h2>
+              <div className="result-content">
+                {predictions.map((pred, idx) => (
+                  <div className="result-row" key={idx}>
+                    <span className="result-label">{pred[0]}:</span>
+                    <span className="result-confidence">
+                      {(pred[1] * 100).toFixed(2)}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
         )}
       </main>
     </div>
   );
-}
+};
 
 export default App;

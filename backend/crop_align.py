@@ -67,6 +67,7 @@ def parse_args():
 
     parser.add_argument('--data', default=['data/cases'], dest='data', nargs='+',
                         help='Path to the data directory containing the images or single image to run the model on.')
+    
     parser.add_argument('--save_dir', default='data/cases_align', dest='save_dir',
                         help='Path to the data directory containing the images to run the model on, single file not supported.')
 
@@ -134,7 +135,7 @@ def detect(net, img_path, img_name, device, save_dir='', first=False):
             if (old_size[0] * old_size[1]) > 10000000:
                 desired_size = 2000  # should be large enough
 
-        ratio = float(desired_size) / max(old_size)
+        ratio= float(desired_size) / max(old_size)
         new_size = [int(x * ratio) for x in old_size]
         new_size = tuple(new_size[::-1])
 
