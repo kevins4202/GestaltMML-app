@@ -49,8 +49,8 @@ def download_from_huggingface(filename, save_path):
 
 # download_from_huggingface(MODEL_FILENAME, MODEL_PATH)
 # download_from_huggingface(CROPPER_FILENAME, CROPPER_PATH)
-gestalt_model_path = hf_hub_download(repo_id="kevins4202/GestaltMML", filename="GestaltMML_model.pt", token=HF_TOKEN)
-resnet_path = hf_hub_download(repo_id="kevins4202/GestaltMML", filename="Resnet50_Final.pth", token=HF_TOKEN)
+gestalt_model_path = hf_hub_download(repo_id="kevins4202/GestaltMML", filename="GestaltMML_model.pt")
+resnet_path = hf_hub_download(repo_id="kevins4202/GestaltMML", filename="Resnet50_Final.pth")
 
 # 2. Load processor and model
 device = "cuda" if torch.cuda.is_available() else "cpu"
