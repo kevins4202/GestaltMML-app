@@ -50,7 +50,7 @@ const App = () => {
     formData.append("image", selectedFile);
 
     try {
-      const response = await fetch("https://backend-2c1js6jmd-kevins4202s-projects.vercel.app/api/predict", {
+      const response = await fetch("http://localhost:5001/api/predict", {
         method: "POST",
         body: formData,
       });
